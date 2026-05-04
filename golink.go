@@ -61,6 +61,7 @@ var (
 	controlURL        = flag.String("control-url", ipn.DefaultControlURL, "the URL base of the control plane (i.e. coordination server)")
 	sqlitefile        = flag.String("sqlitedb", "", "path of SQLite database to store links")
 	dev               = flag.String("dev-listen", "", "if non-empty, listen on this addr and run in dev mode; auto-set sqlitedb if empty and don't use tsnet")
+	listen            = flag.String("listen", "", "if non-empty, listen on this addr without tsnet (production deployments behind a reverse proxy or IAP); -hostname must be set")
 	useHTTPS          = flag.Bool("https", true, "serve golink over HTTPS if enabled on tailnet")
 	snapshot          = flag.String("snapshot", "", "file path of snapshot file")
 	hostname          = flag.String("hostname", defaultHostname, "service name")
@@ -118,6 +119,10 @@ func Run() error {
 	flag.Parse()
 
 	hostinfo.SetApp("golink")
+
+	if *dev != "" && *listen != "" {
+		return errors.New("-dev-listen and -listen are mutually exclusive")
+	}
 
 	// if resolving from backup, set sqlitefile and snapshot flags to
 	// restore links into an in-memory sqlite database.
@@ -202,6 +207,13 @@ func Run() error {
 
 	if *hostname == "" {
 		return errors.New("--hostname, if specified, cannot be empty")
+	}
+
+	if *listen != "" {
+		// Production listen mode: plain HTTP, no tsnet, no dev-mode pseudo-user.
+		// Identity comes from -iap-audience (or -allow-unknown-users).
+		log.Printf("Listening on %s ...", *listen)
+		log.Fatal(http.ListenAndServe(*listen, serveHandler()))
 	}
 
 	tags, err := parseAdvertiseTags(*advertiseTags)
